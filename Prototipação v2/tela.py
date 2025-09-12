@@ -17,7 +17,7 @@ def conectar_bd():
     return mysql.connector.connect(**config)
 
 # Login veterinário (fixo para exemplo)
-veterinario_user = "vet"
+veterinario_user = "admin"
 veterinario_pass = "1234"
 
 # ------------------ ABA VETERINÁRIO ----------------------
@@ -91,32 +91,37 @@ def enviar_relatorio():
             return
         idPet = pet_res[0]
 
-        # Obter idVeterinario pelo nome fixo do login veterinário
-        cursor.execute("SELECT idVeterinario FROM Veterinario WHERE nome = %s", (veterinario_user,))
-        vet_res = cursor.fetchone()
-        if not vet_res:
-            # Se não existir, cria veterinário genérico com nome do usuário e especialidade "Generalista"
-            cursor.execute("INSERT INTO Veterinario (nome, especialidade) VALUES (%s, %s)", (veterinario_user, "Generalista"))
-            conn.commit()
-            cursor.execute("SELECT idVeterinario FROM Veterinario WHERE nome = %s", (veterinario_user,))
-            vet_res = cursor.fetchone()
-        idVet = vet_res[0]
-
-        # Inserir consulta com data atual
-        hoje = datetime.today().date()
-        motivo = "Relatório via Veterinário"
+        # Encontrar o idConsulta mais alto para o pet (consultas mais recentes)
         cursor.execute(
-            "INSERT INTO Consulta (dataConsulta, motivoConsulta, idPet, idVeterinario, relatorio) VALUES (%s, %s, %s, %s, %s)",
-            (hoje, motivo, idPet, idVet, relatorio)
+            "SELECT idConsulta FROM Consulta WHERE idPet = %s ORDER BY idConsulta DESC LIMIT 1",
+            (idPet,)
+        )
+        consulta_res = cursor.fetchone()
+
+        if not consulta_res:
+            messagebox.showerror("Erro", "Não há consultas anteriores para este pet.")
+            cursor.close()
+            conn.close()
+            return
+
+        idConsulta = consulta_res[0]
+
+        # Atualizar a consulta com o novo relatório
+        cursor.execute(
+            "UPDATE Consulta SET relatorio = %s WHERE idConsulta = %s",
+            (relatorio, idConsulta)
         )
         conn.commit()
-        messagebox.showinfo("Sucesso", "Relatório enviado e consulta registrada!")
+        messagebox.showinfo("Sucesso", "Relatório atualizado com sucesso na consulta mais recente!")
 
         text_relatorio.delete("1.0", tk.END)
         cursor.close()
         conn.close()
+
     except Exception as e:
         messagebox.showerror("Erro BD", f"Erro ao enviar relatório: {e}")
+
+
 
 # ------------------ VALIDAÇÕES ---------------------------
 
