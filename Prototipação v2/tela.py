@@ -4,7 +4,6 @@ import mysql.connector
 import re
 from datetime import datetime
 
-# Configuração da conexão com o banco MySQL - ajuste seu usuário e senha aqui
 config = {
     'user': 'root',
     'password': 'root',
@@ -16,11 +15,11 @@ config = {
 def conectar_bd():
     return mysql.connector.connect(**config)
 
-# Login veterinário (fixo para exemplo)
+# Login veterinário
 veterinario_user = "admin"
 veterinario_pass = "1234"
 
-# ------------------ ABA VETERINÁRIO ----------------------
+# Aba veterinário
 
 def tentar_login_vet():
     user = entry_login.get()
@@ -106,7 +105,7 @@ def enviar_relatorio():
 
         idConsulta = consulta_res[0]
 
-        # Atualizar a consulta com o novo relatório
+        # Atualizar a consulta com o novo relatórioq
         cursor.execute(
             "UPDATE Consulta SET relatorio = %s WHERE idConsulta = %s",
             (relatorio, idConsulta)
