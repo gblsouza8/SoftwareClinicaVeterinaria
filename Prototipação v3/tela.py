@@ -4,11 +4,11 @@ import mysql.connector
 import re
 from datetime import datetime
 
-root = tk.Tk()
+# ==============================================================================
+# CONFIGURAÇÃO INICIAL E CONEXÃO
+# ==============================================================================
 
-frame_consulta = ttk.Frame(root)
-frame_consulta.pack()
-
+# Configuração do banco de dados (ajuste se necessário)
 config = {
     'user': 'root',
     'password': 'root',
@@ -16,52 +16,186 @@ config = {
     'database': 'clinica'
 }
 
+# Login veterinário
+veterinario_user = "admin"
+veterinario_pass = "1234"
+
 # Função para conectar no banco
 def conectar_bd():
     try:
         return mysql.connector.connect(**config)
     except mysql.connector.Error as err:
-        messagebox.showerror("Erro de Conexão", f"Não foi possível conectar ao banco de dados: {err}")
+        # Só exibe o erro se não for o "Unknown database" para não travar
+        if err.errno != mysql.connector.errorcode.ER_BAD_DB_ERROR:
+             messagebox.showerror("Erro de Conexão", f"Não foi possível conectar ao banco de dados: {err}")
         return None
 
-# Login veterinário
-veterinario_user = "admin"
-veterinario_pass = "1234"
+# ==============================================================================
+# FUNÇÕES DE VALIDAÇÃO
+# ==============================================================================
 
-# Aba veterinário
-def tentar_login_vet():
-    user = entry_login.get()
-    passwd = entry_senha.get()
-    if user == veterinario_user and passwd == veterinario_pass:
-        frame_login_vet.pack_forget()
-        frame_veterinario.pack(fill='both', expand=True)
-        atualizar_combobox_vet_tutores()
-    else:
-        messagebox.showerror("Erro", "Usuário ou senha inválidos.")
+def validar_data(data):
+    padrao = r"^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/[0-9]{4}$"
+    return re.match(padrao, data) is not None
 
-def atualizar_combobox_vet_tutores():
+def validar_cpf(cpf):
+    return cpf.isdigit() and len(cpf) == 11
+
+def validar_string(texto):
+    return all(char.isalpha() or char.isspace() for char in texto)
+
+def validar_telefone(telefone):
+    # Permite dígitos, espaços, parênteses e traços
+    return re.match(r"^[0-9\s\-\(\)]+$", telefone) is not None and len(telefone.strip()) > 0
+
+def validar_endereco(endereco):
+    return len(endereco.strip()) > 0
+
+# ==============================================================================
+# FUNÇÕES AUXILIARES DE BANCO DE DADOS
+# ==============================================================================
+
+def obter_cpf_por_nome(nome):
+    conn = conectar_bd()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT CPF FROM Tutor WHERE Nome = %s", (nome,))
+        resultado = cursor.fetchone()
+        if resultado:
+            return resultado[0]
+        return None
+    except Exception as e:
+        messagebox.showerror("Erro BD", f"Erro ao buscar CPF: {e}")
+        return None
+    finally:
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+# ==============================================================================
+# FUNÇÕES DE ATUALIZAÇÃO DE COMBOBOX (INTERFACE)
+# ==============================================================================
+
+def atualizar_combobox_clientes():
+    """Atualiza a lista de tutores em todas as Comboboxes de tutores."""
     conn = conectar_bd()
     if not conn:
         return
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT Nome FROM Tutor")
-        tutores = [row[0] for row in cursor.fetchall()]
-        combo_vet_tutores['values'] = tutores
-        combo_vet_pets.set('')
-        combo_vet_pets['values'] = []
+        nomes = [row[0] for row in cursor.fetchall()]
+        
+        # 'combo_clientes' (Cadastro de Pet)
+        if 'combo_clientes' in globals() and combo_clientes.winfo_exists():
+            combo_clientes['values'] = nomes
+            combo_clientes.set('')
+        
+        # 'combo_clientes_consulta' (Consultas)
+        if 'combo_clientes_consulta' in globals() and combo_clientes_consulta.winfo_exists():
+            combo_clientes_consulta['values'] = nomes
+            combo_clientes_consulta.set('')
+
+        # 'combo_vet_tutores' (Veterinário)
+        if 'combo_vet_tutores' in globals() and combo_vet_tutores.winfo_exists():
+            combo_vet_tutores['values'] = nomes
+            combo_vet_tutores.set('')
+            # Limpa o pet
+            combo_vet_pets.set('')
+            combo_vet_pets['values'] = []
+            
     except Exception as e:
-        messagebox.showerror("Erro BD", f"Erro ao buscar tutores: {e}")
+        messagebox.showerror("Erro BD", f"Erro ao atualizar clientes: {e}")
     finally:
         if conn and conn.is_connected():
             cursor.close()
             conn.close()
 
+def atualizar_combobox_pets(event=None):
+    """Atualiza a lista de pets na aba Consultas com base no tutor selecionado."""
+    nome_cliente = combo_clientes_consulta.get()
+    cpf = obter_cpf_por_nome(nome_cliente)
+    
+    combo_pets_consulta.set('')
+    if not cpf:
+        combo_pets_consulta['values'] = []
+        return
+        
+    conn = conectar_bd()
+    if not conn:
+        return
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT nome FROM Pet WHERE cpfTutor = %s", (cpf,))
+        nomes_pets = [row[0] for row in cursor.fetchall()]
+        combo_pets_consulta['values'] = nomes_pets
+    except Exception as e:
+        messagebox.showerror("Erro BD", f"Erro ao atualizar pets: {e}")
+    finally:
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+def atualizar_especialidades():
+    """Atualiza a lista de especialidades na aba Consultas."""
+    conn = conectar_bd()
+    if not conn:
+        return
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT especialidade FROM Veterinario")
+        especialidades = [v[0] for v in cursor.fetchall()]
+        combo_especialidade['values'] = especialidades
+        combo_especialidade.set('')
+    finally:
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+def atualizar_profissional(event=None):
+    """Preenche o campo profissional com um veterinário da especialidade selecionada."""
+    especialidade = combo_especialidade.get()
+    
+    entry_profissional.config(state='normal')
+    entry_profissional.delete(0, tk.END)
+    
+    if not especialidade:
+        entry_profissional.config(state='readonly')
+        return
+        
+    conn = conectar_bd()
+    if not conn:
+        entry_profissional.config(state='readonly')
+        return
+        
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT nome FROM Veterinario WHERE especialidade = %s LIMIT 1", (especialidade,))
+        vet = cursor.fetchone()
+        
+        if vet:
+            entry_profissional.insert(0, vet[0])
+            
+    except Exception as e:
+        messagebox.showerror("Erro BD", f"Erro ao buscar profissional: {e}")
+    finally:
+        entry_profissional.config(state='readonly')
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+
 def atualizar_pets_por_tutor(event=None):
+    """Atualiza a lista de pets na aba Veterinário com base no tutor selecionado."""
     nome_tutor = combo_vet_tutores.get()
+    
+    combo_vet_pets.set('')
     if not nome_tutor:
         combo_vet_pets['values'] = []
         return
+        
     conn = conectar_bd()
     if not conn:
         return
@@ -82,79 +216,46 @@ def atualizar_pets_por_tutor(event=None):
         if conn and conn.is_connected():
             cursor.close()
             conn.close()
-
-def enviar_relatorio():
-    nome_tutor = combo_vet_tutores.get()
-    nome_pet = combo_vet_pets.get()
-    relatorio = text_relatorio.get("1.0", tk.END).strip()
-
-    if not nome_tutor or not nome_pet or not relatorio:
-        messagebox.showwarning("Aviso", "Selecione tutor, pet e escreva o relatório.")
-        return
+            
+def atualizar_listagem():
+    """Atualiza a Treeview com a listagem de Tutores e seus Pets."""
+    for item in tree.get_children():
+        tree.delete(item)
 
     conn = conectar_bd()
     if not conn:
         return
+
     try:
         cursor = conn.cursor()
-
-        # Obter idPet
-        cursor.execute("SELECT idPet FROM Pet WHERE nome = %s", (nome_pet,))
-        pet_res = cursor.fetchone()
-        if not pet_res:
-            messagebox.showerror("Erro", "Pet não encontrado.")
-            return
-        idPet = pet_res[0]
-
-        # Encontrar o idConsulta mais alto para o pet (consultas mais recentes)
-        cursor.execute(
-            "SELECT idConsulta FROM Consulta WHERE idPet = %s ORDER BY idConsulta DESC LIMIT 1",
-            (idPet,)
-        )
-        consulta_res = cursor.fetchone()
-
-        if not consulta_res:
-            messagebox.showerror("Erro", "Não há consultas anteriores para este pet.")
-            return
-
-        idConsulta = consulta_res[0]
-
-        # Atualizar a consulta com o novo relatório
-        cursor.execute(
-            "UPDATE Consulta SET relatorio = %s WHERE idConsulta = %s",
-            (relatorio, idConsulta)
-        )
-        conn.commit()
-        messagebox.showinfo("Sucesso", "Relatório atualizado com sucesso na consulta mais recente!")
-
-        text_relatorio.delete("1.0", tk.END)
-
+        cursor.execute("""
+            SELECT t.Nome, t.CPF, p.nome, p.tipo,
+                   DATE_FORMAT(p.dataNascimento, '%d/%m/%Y')
+            FROM Tutor t
+            LEFT JOIN Pet p ON t.CPF = p.cpfTutor
+            ORDER BY t.Nome, p.nome
+        """)
+        for nome_tutor, cpf, nome_pet, especie, nascimento in cursor.fetchall():
+            tree.insert(
+                "",
+                tk.END,
+                values=(nome_tutor,
+                        cpf,
+                        nome_pet if nome_pet else "-",
+                        especie if especie else "-",
+                        nascimento if nascimento else "-")
+            )
     except Exception as e:
-        messagebox.showerror("Erro BD", f"Erro ao enviar relatório: {e}")
+        messagebox.showerror("Erro BD", f"Erro ao atualizar listagem: {e}")
     finally:
         if conn and conn.is_connected():
             cursor.close()
             conn.close()
 
-# ------------------ VALIDAÇÕES ---------------------------
-def validar_data(data):
-    padrao = r"^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/[0-9]{4}$"
-    return re.match(padrao, data) is not None
 
-def validar_cpf(cpf):
-    return cpf.isdigit() and len(cpf) == 11
-
-def validar_string(texto):
-    return all(char.isalpha() or char.isspace() for char in texto)
-
-def validar_telefone(telefone):
-    return telefone.isdigit()
-
-def validar_endereco(endereco):
-    return len(endereco.strip()) > 0
-
-
-# ------------------ CADASTROS -----------------------------
+# ==============================================================================
+# FUNÇÕES DE CADASTRO
+# ==============================================================================
 
 def cadastrar_cliente():
     cpf = entry_cpf_cliente.get().strip()
@@ -163,8 +264,17 @@ def cadastrar_cliente():
     telefone = entry_telefone.get().strip()
     email = entry_email.get().strip()
 
-    if not cpf or not nome:
-        messagebox.showwarning("Aviso", "CPF e Nome são obrigatórios.")
+    if not validar_cpf(cpf):
+        messagebox.showwarning("Aviso", "CPF inválido! Use 11 dígitos numéricos.")
+        return
+    if not validar_string(nome):
+        messagebox.showwarning("Aviso", "Nome inválido! Use apenas letras e espaços.")
+        return
+    if endereco and not validar_endereco(endereco):
+        messagebox.showwarning("Aviso", "Endereço não pode ser vazio se preenchido.")
+        return
+    if telefone and not validar_telefone(telefone):
+        messagebox.showwarning("Aviso", "Telefone inválido! Use apenas números.")
         return
 
     conn = conectar_bd()
@@ -189,7 +299,6 @@ def cadastrar_cliente():
 
         # Atualiza comboboxes
         atualizar_combobox_clientes()
-        atualizar_combobox_vet_tutores()
 
     except mysql.connector.IntegrityError:
         messagebox.showerror("Erro", "CPF já cadastrado!")
@@ -229,8 +338,7 @@ def cadastrar_pet():
     try:
         nascimento_formatado = datetime.strptime(nascimento, "%d/%m/%Y").strftime("%Y-%m-%d")
     except ValueError:
-        messagebox.showerror("Erro", 
-                             "Formato de data inválido. Use dd/mm/aaaa.")
+        messagebox.showerror("Erro", "Formato de data inválido. Use dd/mm/aaaa.")
         return
 
     conn = conectar_bd()
@@ -250,8 +358,7 @@ def cadastrar_pet():
         entry_especie_pet.delete(0, tk.END)
         entry_nascimento_pet.delete(0, tk.END)
 
-        atualizar_combobox_pets(event=None)
-        atualizar_combobox_vet_tutores()
+        atualizar_combobox_clientes() # Atualiza as listas de tutores, que por sua vez atualizarão os pets em outras abas, se necessário
 
     except Exception as e:
         messagebox.showerror("Erro BD", f"Erro ao cadastrar pet: {e}")
@@ -260,37 +367,16 @@ def cadastrar_pet():
             cursor.close()
             conn.close()
 
-def atualizar_combobox_pets(event=None):
-    global combo_pets          # garante que a variável global é usada
-    tutor = combo_clientes.get()
-    conn = conectar_bd()
-    if not conn:
-        return
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT nome FROM Pet "
-            "JOIN Tutor ON Pet.cpfTutor = Tutor.CPF "
-            "WHERE Tutor.Nome = %s",
-            (tutor,)
-        )
-        pets = [p[0] for p in cursor.fetchall()]
-        combo_pets['values'] = pets
-    finally:
-        cursor.close()
-        conn.close()
-
-
 
 def cadastrar_consulta():
     nome_cliente = combo_clientes_consulta.get()
     cpf = obter_cpf_por_nome(nome_cliente)
     pet_nome = combo_pets_consulta.get()
     especialidade = combo_especialidade.get()
-    motivo = entry_motivo_consulta.get()
+    motivo = entry_motivo_consulta.get().strip()
 
     if not cpf or not pet_nome or not especialidade or not motivo:
-        messagebox.showerror("Erro", "Preencha todos os campos corretamente.")
+        messagebox.showerror("Erro", "Selecione o Cliente, Pet, Especialidade e digite o Motivo.")
         return
 
     conn = conectar_bd()
@@ -332,180 +418,81 @@ def cadastrar_consulta():
         if conn and conn.is_connected():
             cursor.close()
             conn.close()
+            
+# ==============================================================================
+# FUNÇÕES DO VETERINÁRIO (ABA)
+# ==============================================================================
 
-# ------------------ FUNÇÕES AUXILIARES --------------------
-def obter_cpf_por_nome(nome):
+def tentar_login_vet():
+    user = entry_login.get()
+    passwd = entry_senha.get()
+    if user == veterinario_user and passwd == veterinario_pass:
+        frame_login_vet.pack_forget()
+        frame_veterinario.pack(fill='both', expand=True)
+        # Atualiza a lista de tutores no Combobox da aba vet após o login
+        atualizar_combobox_clientes()
+    else:
+        messagebox.showerror("Erro", "Usuário ou senha inválidos.")
+
+
+def enviar_relatorio():
+    nome_tutor = combo_vet_tutores.get()
+    nome_pet = combo_vet_pets.get()
+    relatorio = text_relatorio.get("1.0", tk.END).strip()
+
+    if not nome_tutor or not nome_pet or not relatorio:
+        messagebox.showwarning("Aviso", "Selecione tutor, pet e escreva o relatório.")
+        return
+
     conn = conectar_bd()
     if not conn:
         return
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT CPF FROM Tutor WHERE Nome = %s", (nome,))
-        resultado = cursor.fetchone()
-        if resultado:
-            return resultado[0]
-        return None
+
+        # Obter idPet
+        cursor.execute("SELECT idPet FROM Pet WHERE nome = %s", (nome_pet,))
+        pet_res = cursor.fetchone()
+        if not pet_res:
+            messagebox.showerror("Erro", "Pet não encontrado.")
+            return
+        idPet = pet_res[0]
+
+        # Encontrar o idConsulta mais alto para o pet (consultas mais recentes)
+        cursor.execute(
+            "SELECT idConsulta FROM Consulta WHERE idPet = %s ORDER BY dataConsulta DESC, idConsulta DESC LIMIT 1",
+            (idPet,)
+        )
+        consulta_res = cursor.fetchone()
+
+        if not consulta_res:
+            messagebox.showerror("Erro", "Não há consultas anteriores para este pet.")
+            return
+
+        idConsulta = consulta_res[0]
+
+        # Atualizar a consulta com o novo relatório
+        cursor.execute(
+            "UPDATE Consulta SET relatorio = %s WHERE idConsulta = %s",
+            (relatorio, idConsulta)
+        )
+        conn.commit()
+        messagebox.showinfo("Sucesso", "Relatório atualizado com sucesso na consulta mais recente!")
+
+        text_relatorio.delete("1.0", tk.END)
+
     except Exception as e:
-        messagebox.showerror("Erro BD", f"Erro ao buscar CPF: {e}")
-        return None
-    finally:
-        if conn and conn.is_connected():
-            cursor.close()
-            conn.close()
-
-combo_clientes = ttk.Combobox(frame_consulta, state="readonly")
-combo_clientes.pack()
-
-def atualizar_combobox_pets_cadastro(event=None):
-    # código para atualizar a lista de pets
-    print("Atualizando pets...")
-
-combo_clientes.bind("<<ComboboxSelected>>", atualizar_combobox_pets_cadastro)
-
-
-
-
-
-def atualizar_combobox_clientes():
-    conn = conectar_bd()
-    if not conn:
-        return
-    try:
-        combo_clientes.bind("<<ComboboxSelected>>", atualizar_combobox_pets_cadastro)
-
-        cursor = conn.cursor()
-        cursor.execute("SELECT Nome FROM Tutor")
-        nomes = [row[0] for row in cursor.fetchall()]
-        combo_clientes['values'] = nomes
-        combo_clientes_consulta['values'] = nomes
-        
-
-        
-        
-        atualizar_combobox_pets()
-    except Exception as e:
-        messagebox.showerror("Erro BD", f"Erro ao atualizar clientes: {e}")
-    finally:
-        if conn and conn.is_connected():
-            cursor.close()
-            conn.close()
-
-def atualizar_combobox_pets(event=None):
-    nome_cliente = combo_clientes_consulta.get()
-    cpf = obter_cpf_por_nome(nome_cliente)
-    if not cpf:
-        combo_pets_consulta['values'] = []
-        return
-    conn = conectar_bd()
-    if not conn:
-        return
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT nome FROM Pet WHERE cpfTutor = %s", (cpf,))
-        nomes_pets = [row[0] for row in cursor.fetchall()]
-        combo_pets_consulta['values'] = nomes_pets
-    except Exception as e:
-        messagebox.showerror("Erro BD", f"Erro ao atualizar pets: {e}")
-    finally:
-        if conn and conn.is_connected():
-            cursor.close()
-            conn.close()
-
-def criar_aba_consulta(notebook):
-    frame_consulta = ttk.Frame(notebook)
-    notebook.add(frame_consulta, text="Consultas")
-    ...
-
-
-def atualizar_listagem():
-    # 1. Limpa todas as linhas existentes
-    for item in tree.get_children():
-        tree.delete(item)
-
-    conn = conectar_bd()
-    if not conn:
-        return
-
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT t.Nome, t.CPF, p.nome, p.tipo,
-                   DATE_FORMAT(p.dataNascimento, '%d/%m/%Y')
-            FROM Tutor t
-            LEFT JOIN Pet p ON t.CPF = p.cpfTutor
-            ORDER BY t.Nome, p.nome
-        """)
-        for nome_tutor, cpf, nome_pet, especie, nascimento in cursor.fetchall():
-            tree.insert(
-                "",
-                tk.END,
-                values=(nome_tutor,
-                        cpf,
-                        nome_pet if nome_pet else "-",
-                        especie if especie else "-",
-                        nascimento if nascimento else "-")
-            )
-    except Exception as e:
-        messagebox.showerror("Erro BD", f"Erro ao atualizar listagem: {e}")
+        messagebox.showerror("Erro BD", f"Erro ao enviar relatório: {e}")
     finally:
         if conn and conn.is_connected():
             cursor.close()
             conn.close()
 
 
-# criação na interface, antes do botão de consulta
-# criar a aba antes
-frame_consulta = ttk.Frame(ttk.Notebook)
-ttk.Notebook.add(frame_consulta, text="Consultas")
+# ==============================================================================
+# INTERFACE GRÁFICA (Widgets)
+# ==============================================================================
 
-# criar combobox
-combo_especialidade = ttk.Combobox(frame_consulta, state="readonly")
-combo_especialidade.pack(pady=5)
-
-def atualizar_especialidades():
-    conn = conectar_bd()
-    if not conn:
-        return
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT especialidade FROM Veterinario")
-        especialidades = [v[0] for v in cursor.fetchall()]
-        combo_especialidade['values'] = especialidades
-    finally:
-        cursor.close()
-        conn.close()
-
-
-
-
-
-def atualizar_profissional(event=None):
-    especialidade = combo_especialidade.get()
-    if not especialidade:
-        entry_profissional.config(state='normal')
-        entry_profissional.delete(0, tk.END)
-        entry_profissional.config(state='readonly')
-        return
-    conn = conectar_bd()
-    if not conn:
-        return
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT nome FROM Veterinario WHERE especialidade = %s LIMIT 1", (especialidade,))
-        vet = cursor.fetchone()
-        entry_profissional.config(state='normal')
-        entry_profissional.delete(0, tk.END)
-        if vet:
-            entry_profissional.insert(0, vet[0])
-        entry_profissional.config(state='readonly')
-    except Exception as e:
-        messagebox.showerror("Erro BD", f"Erro ao atualizar profissional: {e}")
-    finally:
-        if conn and conn.is_connected():
-            cursor.close()
-            conn.close()
-
-# ------------------ INTERFACE GRÁFICA ----------------------
 root = tk.Tk()
 root.title("Clínica Veterinária")
 root.geometry("800x600")
@@ -534,13 +521,7 @@ style.configure("TNotebook.Tab", font=("Segoe UI", 10, "bold"), padding=[12, 8])
 notebook = ttk.Notebook(root)
 notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
-style.configure("TNotebook", background="#f4f6f7")
-style.configure("TNotebook.Tab", font=("Segoe UI", 10, "bold"), padding=[10, 5])
-
-
-notebook.pack(fill="both", expand=True)  # sem padx, sem pady
-
-# Aba Cadastro de Cliente
+# --- Aba Cadastro de Cliente ---
 frame_cliente = ttk.Frame(notebook)
 notebook.add(frame_cliente, text="Cadastro de Cliente")
 
@@ -576,18 +557,17 @@ btn_cadastrar_cliente = ttk.Button(
 btn_cadastrar_cliente.grid(row=6, column=0, columnspan=2, pady=25)
 
 
-
-# Aba Cadastro de Pet
+# --- Aba Cadastro de Pet ---
 frame_pet = ttk.Frame(notebook)
 notebook.add(frame_pet, text="Cadastro de Pet")
 
 tk.Label(frame_pet, text="Cadastro de Pet",
-         font=("Segoe UI", 16, "bold"),
-         bg="#f4f6f7", fg="#2c3e50").pack(pady=15)
+          font=("Segoe UI", 16, "bold"),
+          bg="#f4f6f7", fg="#2c3e50").pack(pady=15)
 
 tk.Label(frame_pet, text="Selecione Cliente:").pack()
 combo_clientes = ttk.Combobox(frame_pet, state="readonly")
-combo_clientes.pack(pady=5)
+combo_clientes.pack(pady=5) # Usado para selecionar o tutor do novo pet
 
 tk.Label(frame_pet, text="Nome do Pet:").pack()
 entry_nome_pet = tk.Entry(frame_pet, width=25)
@@ -604,17 +584,19 @@ entry_nascimento_pet.pack(pady=5)
 btn_cadastrar_pet = ttk.Button(frame_pet, text="Cadastrar Pet", command=cadastrar_pet)
 btn_cadastrar_pet.pack(pady=15)
 
-# Aba Consultas
+# --- Aba Consultas ---
 frame_consulta = ttk.Frame(notebook)
 notebook.add(frame_consulta, text="Consultas")
 
 tk.Label(frame_consulta, text="Consultas",
-         font=("Segoe UI", 16, "bold"),
-         bg="#f4f6f7", fg="#2c3e50").pack(pady=15)
+          font=("Segoe UI", 16, "bold"),
+          bg="#f4f6f7", fg="#2c3e50").pack(pady=15)
 
 tk.Label(frame_consulta, text="Selecione Cliente:").pack()
 combo_clientes_consulta = ttk.Combobox(frame_consulta, state="readonly")
 combo_clientes_consulta.pack(pady=5)
+# BIND CORRIGIDO: Atualiza pets ao selecionar cliente
+combo_clientes_consulta.bind("<<ComboboxSelected>>", atualizar_combobox_pets)
 
 tk.Label(frame_consulta, text="Selecione Pet:").pack()
 combo_pets_consulta = ttk.Combobox(frame_consulta, state="readonly")
@@ -623,6 +605,8 @@ combo_pets_consulta.pack(pady=5)
 tk.Label(frame_consulta, text="Especialidade do Veterinário:").pack()
 combo_especialidade = ttk.Combobox(frame_consulta, state="readonly")
 combo_especialidade.pack(pady=5)
+# BIND CORRIGIDO: Atualiza profissional ao selecionar especialidade
+combo_especialidade.bind("<<ComboboxSelected>>", atualizar_profissional)
 
 tk.Label(frame_consulta, text="Profissional:").pack()
 entry_profissional = tk.Entry(frame_consulta, width=25, state="readonly")
@@ -634,13 +618,14 @@ entry_motivo_consulta.pack(pady=5)
 
 btn_cadastrar_consulta = ttk.Button(frame_consulta, text="Registrar Consulta", command=cadastrar_consulta)
 btn_cadastrar_consulta.pack(pady=15)
-# Aba Listagem
+
+# --- Aba Listagem ---
 frame_listagem = ttk.Frame(notebook)
 notebook.add(frame_listagem, text="Listagem")
 
 tk.Label(frame_listagem, text="Listagem Geral",
-         font=("Segoe UI", 16, "bold"),
-         bg="#f4f6f7", fg="#2c3e50").pack(pady=15)
+          font=("Segoe UI", 16, "bold"),
+          bg="#f4f6f7", fg="#2c3e50").pack(pady=15)
 
 tree = ttk.Treeview(frame_listagem, columns=("Tutor", "CPF", "Pet", "Espécie", "Nascimento"), show="headings")
 tree.heading("Tutor", text="Tutor")
@@ -652,10 +637,12 @@ tree.pack(fill="both", expand=True, padx=10, pady=10)
 
 btn_atualizar_listagem = ttk.Button(frame_listagem, text="Atualizar Listagem", command=atualizar_listagem)
 btn_atualizar_listagem.pack(pady=10)
-# Aba Veterinário com login simples
+
+# --- Aba Veterinário com login simples ---
 frame_vet = ttk.Frame(notebook)
 notebook.add(frame_vet, text="Veterinário")
 
+# Frame de Login
 frame_login_vet = ttk.Frame(frame_vet)
 frame_login_vet.pack(fill='both', expand=True)
 
@@ -671,12 +658,13 @@ entry_senha.pack(pady=5, padx=10)
 btn_login_vet = ttk.Button(frame_login_vet, text="Entrar", command=tentar_login_vet)
 btn_login_vet.pack(pady=10)
 
-frame_veterinario = ttk.Frame(frame_vet)
+# Frame da Funcionalidade Veterinário
+frame_veterinario = ttk.Frame(frame_vet) # Não tem .pack() aqui, só será exibido após o login
 
 tk.Label(frame_veterinario, text="Selecione Tutor:").pack(pady=(10, 0))
 combo_vet_tutores = ttk.Combobox(frame_veterinario, state='readonly')
 combo_vet_tutores.pack(pady=5, padx=10)
-combo_vet_tutores.bind("<<ComboboxSelected>>", atualizar_pets_por_tutor)
+combo_vet_tutores.bind("<<ComboboxSelected>>", atualizar_pets_por_tutor) # Bind está correto
 
 tk.Label(frame_veterinario, text="Selecione Pet:").pack()
 combo_vet_pets = ttk.Combobox(frame_veterinario, state='readonly')
@@ -689,9 +677,11 @@ text_relatorio.pack(pady=5, padx=10, fill=tk.BOTH, expand=True)
 btn_enviar_relatorio = ttk.Button(frame_veterinario, text="Enviar Relatório", command=enviar_relatorio)
 btn_enviar_relatorio.pack(pady=10)
 
-# Atualizações iniciais
-atualizar_combobox_clientes()        # aba de consultas (clientes)
-atualizar_combobox_vet_tutores()     # se usa tutores em outra aba
-atualizar_especialidades()           # profissionais/especialidades
+# ==============================================================================
+# ATUALIZAÇÕES INICIAIS (Chamadas após a criação de todos os widgets)
+# ==============================================================================
 
-root.mainloop()
+atualizar_combobox_clientes()     # Inicializa tutores em Cadastro, Consultas, Veterinário
+atualizar_especialidades()        # Inicializa especialidades em Consultas
+
+root.mainloop() 
