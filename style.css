@@ -1,0 +1,123 @@
+/* Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: #fefcf9; /* tom suave */
+    color: #444;
+  }
+  
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 50px;
+    background: white;
+    border-bottom: 1px solid #ddd;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+  }
+  
+  header img {
+    height: 60px;
+  }
+  
+  nav {
+    display: flex;
+    gap: 25px;
+    flex-wrap: wrap;
+  }
+  
+  nav a {
+    text-decoration: none;
+    color: #555;
+    font-weight: 500;
+    padding: 10px 15px;
+    transition: 0.3s;
+  }
+  
+  nav a:hover,
+  nav a.active {
+    color: #6b4226;
+    border-bottom: 3px solid #6b4226;
+  }
+  
+  nav a.botao {
+    border: none;
+    background: #6b4226;
+    color: white;
+    border-radius: 6px;
+    padding: 10px 18px;
+    font-weight: 600;
+    transition: 0.3s;
+  }
+  
+  nav a.botao:hover {
+    background: #4d2f1a;
+  }
+  
+  /* Hero Section */
+  .hero {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 50px;
+    padding: 50px 20px;
+    flex-wrap: wrap;  /* permite quebrar no mobile */
+    text-align: center;
+  }
+  
+  .hero img {
+    width: 200px;
+    max-width: 100%;
+  }
+  
+  .hero-text {
+    max-width: 500px;
+  }
+  
+  .hero-text h1 {
+    font-size: 36px;
+    margin-bottom: 20px;
+    color: #6b4226;
+  }
+  
+  .hero-text p {
+    font-size: 18px;
+    line-height: 1.6;
+    margin-bottom: 15px;
+  }
+  
+  .hero-text strong {
+    color: #000;
+
+
+
+    /* Páginas internas */
+.pagina {
+  max-width: 900px;
+  margin: 50px auto;
+  padding: 0 20px;
+  text-align: left;
+}
+
+.pagina h1 {
+  font-size: 32px;
+  color: #6b4226;
+  margin-bottom: 20px;
+}
+
+.pagina p {
+  font-size: 18px;
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+  }
+  
